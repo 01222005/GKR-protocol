@@ -1,123 +1,111 @@
 import random
 import math
+from typing import List
 
 random.seed(12345)
+P = 2147483647  # 我們可選擇在需要時做 mod，這裡示範用整數運算
+
+def mod(x: int) -> int:
+    return x % P
+
+def enum_bool_assignments(k: int):
+    for i in range(1 << k):
+        yield [(i >> j) & 1 for j in range(k)]
+
+def index_to_bits(i: int, m: int) -> List[int]:
+    return [(i >> j) & 1 for j in range(m)]
+
+def multilinear_extension_from_table(table_values: List[int], x_vars: List[float]) -> float:
+    k = int(math.log2(len(table_values)))
+    total = 0
+    for idx, val in enumerate(table_values):
+        if val == 0:
+            continue
+        bits = index_to_bits(idx, k)
+        weight = 1.0
+        for b, xv in zip(bits, x_vars):
+            # L_0(x) = (1 - x), L_1(x) = x
+            weight *= (xv if b == 1 else (1.0 - xv))
+        total += val * weight
+    return total
 
 class SumcheckProver:
-    def __init__(self, table, m):
+    def __init__(self, table: List[int], m: int):
         self.table = table
         self.m = m
-        self.total_vars = 2 * m
+        self.total_vars = 2 * m  # variables: a0..a_{m-1}, b0..b_{m-1}
 
-    def full_sum(self):
-        return sum(self.table)
+    def full_sum(self) -> float:
+        return float(sum(self.table))
 
-    def get_gi_polynomial(self, i, prefix):
-        # 第 i 個變數，剩下 total_vars - i 個變數
-        rem = self.total_vars - i
+    def get_gi_polynomial(self, i: int, prefix: List[float]) -> (float, float):
+        assert len(prefix) == i - 1
+        rem = self.total_vars - i  # number of boolean vars remaining after current var
 
-        g0 = 0
-        g1 = 0
+        g0 = 0.0
+        g1 = 0.0
 
-        # 列舉後面剩下的 bits
-        for tail_mask in range(1 << rem):
+        # Enumerate all assignments of the remaining rem boolean variables
+        for tail_bits in enum_bool_assignments(rem):
+            # build full vector for evaluation: length total_vars
+            vec0 = list(prefix) + [0.0] + [float(b) for b in tail_bits]
+            vec1 = list(prefix) + [1.0] + [float(b) for b in tail_bits]
+            # Evaluate multilinear extension at vec0 and vec1
+            val0 = multilinear_extension_from_table(self.table, vec0)
+            val1 = multilinear_extension_from_table(self.table, vec1)
+            g0 += val0
+            g1 += val1
 
-            # 組成 vec0 = prefix + [0] + tail
-            # 組成 vec1 = prefix + [1] + tail
-            vec0 = prefix + [0]
-            vec1 = prefix + [1]
-
-            for j in range(rem):
-                bit = (tail_mask >> j) & 1
-                vec0.append(bit)
-                vec1.append(bit)
-
-            # a,b index 各是 m bits
-            a0 = 0
-            b0 = 0
-            a1 = 0
-            b1 = 0
-
-            # 確保向量長度足夠
-            if len(vec0) < 2 * self.m or len(vec1) < 2 * self.m:
-                continue
-
-            # 第一段 bits = a
-            for j in range(self.m):
-                if j < len(vec0):
-                    a0 |= (vec0[j] << j)
-                if j < len(vec1):
-                    a1 |= (vec1[j] << j)
-
-            # 第二段 bits = b
-            for j in range(self.m):
-                if self.m + j < len(vec0):
-                    b0 |= (vec0[self.m + j] << j)
-                if self.m + j < len(vec1):
-                    b1 |= (vec1[self.m + j] << j)
-
-            idx0 = a0 * (1 << self.m) + b0
-            idx1 = a1 * (1 << self.m) + b1
-
-            # 檢查索引是否在範圍內
-            if idx0 < len(self.table):
-                g0 += self.table[idx0]
-            if idx1 < len(self.table):
-                g1 += self.table[idx1]
-
-        # g(t) = g0 + (g1 - g0) * t
         a = g0
         b = g1 - g0
         return a, b
 
-    def evaluate_final(self, rlist):
-        total = 0
-        L = len(self.table)
-        k = self.total_vars
-
-        for idx in range(L):
-            # bits
-            bits = [(idx >> j) & 1 for j in range(k)]
-            weight = 1
-            for b, r in zip(bits, rlist):
-                weight *= (r if b == 1 else (1 - r))
-            total += self.table[idx] * weight
-        return total
+    def evaluate_final(self, rlist: List[float]) -> float:
+        return multilinear_extension_from_table(self.table, rlist)
 
 
 class SumcheckVerifier:
     def __init__(self):
         self.log = []
+        random.seed(12345)
 
-    def rand_field(self):
-        return random.randint(0, 10)
+    def rand_field(self) -> float:
+        # in a demo we can use integer randomness; in real protocol use field element
+        return float(random.randint(0, 10))
 
     def run(self, prover: SumcheckProver):
+        self.log = []
         self.log.append("=== Sumcheck start ===")
-        total = prover.full_sum()
-        self.log.append(f"Prover claims sum = {total}")
+        S = prover.full_sum()
+        self.log.append(f"Prover claims sum = {S}")
 
-        prev = total
-        prefix = []
+        prev = S
+        prefix = []  # will contain possibly non-boolean values (r's)
         k = prover.total_vars
 
         for i in range(1, k + 1):
             a, b = prover.get_gi_polynomial(i, prefix)
             self.log.append(f"g_{i}(t) = {a} + {b} * t")
 
-            if a + (a + b) != prev:
-                self.log.append("Consistency check FAILED")
+            # Check consistency: g(0) + g(1) == prev
+            g0 = a
+            g1 = a + b
+            if abs((g0 + g1) - prev) > 1e-9:  # tolerance for floating errors
+                self.log.append(f"Consistency check FAILED at round {i}: {g0 + g1} != {prev}")
                 return False, self.log
 
+            # Verifier picks random r (field element) and sends
             r = self.rand_field()
             self.log.append(f"Verifier sends r_{i} = {r}")
             prefix.append(r)
 
+            # Update prev = g(r) = a + b*r
             prev = a + b * r
 
+        # Final: ask prover for value of multilinear extension at r = prefix
         F_r = prover.evaluate_final(prefix)
         self.log.append(f"Prover sends F(r) = {F_r}")
-        self.log.append(f"Check {prev} == {F_r}")
+        self.log.append(f"Verifier final check: prev = {prev} ?= F(r) = {F_r}")
 
-        ok = (prev == F_r)
+        ok = abs(prev - F_r) <= 1e-9
         return ok, self.log
