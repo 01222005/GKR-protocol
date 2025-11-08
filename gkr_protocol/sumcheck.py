@@ -3,7 +3,7 @@ import math
 from typing import List
 
 random.seed(12345)
-P = 2147483647  # 我們可選擇在需要時做 mod，這裡示範用整數運算
+P = 2147483647 
 
 def mod(x: int) -> int:
     return x % P
@@ -33,14 +33,14 @@ class SumcheckProver:
     def __init__(self, table: List[int], m: int):
         self.table = table
         self.m = m
-        self.total_vars = 2 * m  # variables: a0..a_{m-1}, b0..b_{m-1}
+        self.total_vars = 2 * m  
 
     def full_sum(self) -> float:
         return float(sum(self.table))
 
     def get_gi_polynomial(self, i: int, prefix: List[float]) -> (float, float):
         assert len(prefix) == i - 1
-        rem = self.total_vars - i  # number of boolean vars remaining after current var
+        rem = self.total_vars - i  
 
         g0 = 0.0
         g1 = 0.0
@@ -70,7 +70,6 @@ class SumcheckVerifier:
         random.seed(12345)
 
     def rand_field(self) -> float:
-        # in a demo we can use integer randomness; in real protocol use field element
         return float(random.randint(0, 10))
 
     def run(self, prover: SumcheckProver):
@@ -80,7 +79,7 @@ class SumcheckVerifier:
         self.log.append(f"Prover claims sum = {S}")
 
         prev = S
-        prefix = []  # will contain possibly non-boolean values (r's)
+        prefix = [] 
         k = prover.total_vars
 
         for i in range(1, k + 1):
