@@ -1,21 +1,8 @@
-# gkr.py
-# Prototype: GKR-style layer-by-layer verification using Sumcheck (teaching/demo)
-# - fixed circuit model (Constant + Gate)
-# - Prover & Verifier separated
-# - Sumcheck over boolean hypercube for single-layer relation
-# - Interaction log recorded and printed at the end
-#
-# Usage:
-#   python gkr.py
-
 import random
 import math
 from typing import List, Tuple, Callable
 
-# -------------------------
-# FIELD (use a prime for mod arithmetic)
-# -------------------------
-P = 2147483647  # a large prime (2^31 - 1)
+P = 2147483647  
 random.seed(0xC0FFEE)
 
 def mod(x: int) -> int:
@@ -67,15 +54,10 @@ def enum_bool_assignments(k: int):
     for i in range(1 << k):
         yield [(i >> j) & 1 for j in range(k)]
 
-# Convert integer index to its m-bit vector (LSB first)
 def index_to_bits(i: int, m: int) -> List[int]:
     return [(i >> j) & 1 for j in range(m)]
 
-# Lagrange-style indicator for bits: returns 1 if bit == chosen (0/1), else 0, but expressed
-# as product of (t) or (1-t) so it is a multilinear polynomial in t over field.
-# For the boolean hypercube we will use this to get indicator delta(h_bits, x_bits).
 def indicator_multilinear(h_bits: List[int], x_vars: List[int]) -> int:
-    # x_vars are field elements, but in our Sumcheck we evaluate at 0/1 or at random field elts.
     prod = 1
     for hb, xv in zip(h_bits, x_vars):
         if hb == 1:
@@ -108,17 +90,14 @@ def multilinear_extension_from_table(table_values: List[int], x_vars: List[int])
 # -------------------------
 def build_demo_circuit():
     circuit = {}
-    # Layer 2 (bottom) - use Constant wrappers for literal inputs
-    circuit[0] = Gate(0, 'mul', Constant(2), Constant(3))   # 2*3
-    circuit[1] = Gate(1, 'mul', Constant(4), Constant(5))   # 4*5
-    circuit[2] = Gate(2, 'mul', Constant(6), Constant(7))   # 6*7
-    circuit[3] = Gate(3, 'add', Constant(8), Constant(9))   # 8+9
+    circuit[0] = Gate(0, 'mul', Constant(2), Constant(3)) 
+    circuit[1] = Gate(1, 'mul', Constant(4), Constant(5))  
+    circuit[2] = Gate(2, 'mul', Constant(6), Constant(7))  
+    circuit[3] = Gate(3, 'add', Constant(8), Constant(9)) 
 
-    # Layer 1
-    circuit[4] = Gate(4, 'add', 0, 1)   # (0)+(1)
-    circuit[5] = Gate(5, 'add', 2, 3)   # (2)+(3)
+    circuit[4] = Gate(4, 'add', 0, 1)   
+    circuit[5] = Gate(5, 'add', 2, 3)   
 
-    # Layer 0 (output)
     circuit[6] = Gate(6, 'add', 4, 5)
 
     return circuit
@@ -134,10 +113,7 @@ class Prover:
         self.log = []  # messages prover -> verifier
 
     def compute_all(self):
-        # compute in topological order (safe since our graph is DAG)
-        # simply call compute on the final gate(s) to lazy compute everything
         for idx in sorted(self.circuit.keys()):
-            # compute each to populate .value (works because Constant.compute returns value)
             self.circuit[idx].compute(self.circuit)
 
     def get_gate_value(self, idx):
@@ -149,26 +125,15 @@ class Prover:
     # F(a_bits, b_bits) = f_i(a,b,g) where a,b are indices in previous layer (expressed by bits).
     # We will build a table of size 2^m * 2^m (flattened) of integers (field elements).
     def build_layer_relation_table(self, layer_idx: int, g: int) -> Tuple[int, List[int], int]:
-        """
-        Return (m, flattened_table, size)
-        - previous layer has N_prev gates, let m = ceil(log2(N_prev))
-        - flattened_table is list of length 2^(2m): index = a_index * 2^m + b_index
-          value = f_i(a,b,g) (in field mod P), which is either
-            * for add gate: V_prev[a] + V_prev[b] if (a,b) are actual parents of g, else 0
-            * for mul gate: V_prev[a] * V_prev[b] if parents, else 0
-        """
-        # find which layer g sits in, and get previous layer (index)
-        # layers: list of lists; find layer_idx in layers
-        # layer_idx passed by caller; previous layer is layers[layer_pos + 1]
         prev_layer = self.layers[layer_idx + 1]  # layers going top->bottom in our run
         N_prev = len(prev_layer)
         m = max(1, math.ceil(math.log2(N_prev)))  # bit-length
         size = 1 << m
 
-        # map prev_layer indices (actual gate indices) to 0..N_prev-1 positions
+        # map prev_layer indices to 0..N_prev-1 positions
         idx_map = {gate_idx: pos for pos, gate_idx in enumerate(prev_layer)}
 
-        # determine parents of g (they may be gate indices from previous layer)
+        # determine parents of g
         gate = self.circuit[g]
         left = gate.left
         right = gate.right
@@ -301,7 +266,7 @@ class SumcheckVerifier:
         return prev == F_r
 
 # -------------------------
-# Orchestration: GKR run over layers (top-down verification with Sumcheck)
+# Orchestration: GKR run over layers
 # -------------------------
 def run_gkr_demo():
     # build circuit and layers list (top-level -> bottom-level)
@@ -312,9 +277,9 @@ def run_gkr_demo():
 
     # define layers as lists of gate indices from top (output layer) to bottom (input layer)
     layers = [
-        [6],        # layer 0 (top, output)
-        [4,5],      # layer 1
-        [0,1,2,3]   # layer 2 (bottom)
+        [6],       
+        [4,5],    
+        [0,1,2,3]   
     ]
 
     # create prover and verifier
@@ -335,6 +300,7 @@ def run_gkr_demo():
             # Verifier randomly picks gate g (here we check all for demo)
             # Run sumcheck for this g
             passed = V.run_sumcheck(P, layer_i, g)
+            
             # merge logs
             interaction_log.extend(P.log)
             interaction_log.extend(V.log)
