@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>GKR Protocol Demo</title>
+    <meta charset="UTF-8" />
+</head>
+<body>
+
+<h2>GKR Protocol Demo</h2>
+<hr/>
+
+<p>
+    請輸入電路矩陣（二維陣列），每層用 0/1 表示 gate 類型。<br>
+    0 = 加法 (+)，1 = 乘法 (×)<br><br>
+
+    例如：<code>[[0,1],[1,0]]</code><br>
+    對應電路結構：<br>
+
+    <pre>
+    Layer 2: g2 = g0 × g1      g3 = g0 + g1
+    Layer 1: g0 = x1 + x2      g1 = x3 × x4
+    </pre>
+
+    電路會自動由下而上連接。
+</p>
+
+
+<textarea id="circuit" rows="5" cols="40">[[0,1],[1,0]]</textarea>
+<br/><br/>
+
+<p>請輸入輸入值（例如：[3,5,2,7]，將會是x1,x2,x3,x4）</p>
+<input id="inputs" type="text" size="40" value="[3,5,2,7]" />
+<br/><br/>
+
+<button onclick="runGKR()">Run GKR</button>
+
+<hr/>
+
+<h3>GKR Output Log</h3>
+<pre id="log"></pre>
+
+<script>
+async function runGKR() {
+    const circuit = document.getElementById("circuit").value;
+    const inputs = document.getElementById("inputs").value;
+
+    const response = await fetch("http://PROVER-SERVER-IP:5000/run_gkr", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            circuit: JSON.parse(circuit),
+            inputs: JSON.parse(inputs)
+        })
+    });
+
+
+    const data = await response.json();
+    document.getElementById("log").textContent = data.log.join("\n");
+}
+</script>
+
+</body>
+</html>
